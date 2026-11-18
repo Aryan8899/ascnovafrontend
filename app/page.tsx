@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Poppins } from "next/font/google";
+import PaymentStep from "@/components/PaymentStep";
 
 const poppins = Poppins({ subsets: ["latin"], weight: ["400", "500", "600", "700"] });
 
@@ -129,8 +130,7 @@ export default function Page() {
   const [f, setF] = useState<FormState>(initial);
   const [file, setFile] = useState<File | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [submitted, setSubmitted] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState<"form" | "pay">("form");
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -170,7 +170,9 @@ export default function Page() {
     return e;
   };
 
-  const onSubmit = async (ev: React.FormEvent) => {
+  // Ab yahan API call nahi hoti: sirf validate karke payment step kholte hain.
+  // Asli submit PaymentStep ke andar hota hai (UTR + screenshot ke saath).
+  const onSubmit = (ev: React.FormEvent) => {
     ev.preventDefault();
     const e = validate();
     setErrors(e);
@@ -178,19 +180,8 @@ export default function Page() {
       document.querySelector("[data-err='1']")?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
-    setLoading(true);
-    try {
-      const fd = new FormData();
-      Object.entries(f).forEach(([k, v]) => fd.append(k, v));
-      if (file) fd.append("resume", file);
-      // TODO: backend yahan connect karein (app/api/candidates/route.ts)
-      // await fetch("/api/candidates", { method: "POST", body: fd });
-      console.log("Form data ready:", Object.fromEntries(fd.entries()));
-      setSubmitted(true);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } finally {
-      setLoading(false);
-    }
+    setStep("pay");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const bd = (k: string) => (errors[k] ? "border-red-500" : "border-slate-300");
@@ -264,41 +255,44 @@ export default function Page() {
           <div className={`rounded-2xl border border-slate-300/70 bg-[#f8fafc] p-6 ${cardShadow}`}>
             <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Your progress</div>
             <div className="mt-2 flex items-baseline gap-1.5">
-              <span className="text-4xl font-semibold tabular-nums" style={{ color: NAVY }}>{submitted ? 11 : answered}</span>
+              <span className="text-4xl font-semibold tabular-nums" style={{ color: NAVY }}>{answered}</span>
               <span className="text-slate-500">of 11 answered</span>
             </div>
             <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-200">
-              <div className="h-full rounded-full transition-all duration-300" style={{ width: `${submitted ? 100 : pct}%`, background: `linear-gradient(90deg, ${BLUE}, #5b95dc)` }} />
+              <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${BLUE}, #5b95dc)` }} />
             </div>
 
             <ol className="relative mt-7 space-y-6 text-[14px] leading-snug text-slate-600">
               <span className="absolute bottom-6 left-3 top-6 w-px bg-slate-300" aria-hidden />
               {[
                 ["Share your details", "Takes about 3 minutes."],
-                ["We review your profile", "Our team goes through your resume."],
-                ["We get in touch", "When a suitable role comes up."],
-              ].map(([t, d], i) => (
-                <li key={t} className="relative flex gap-3">
-                  <span className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#dbe6f5] text-xs font-semibold ring-4 ring-[#f8fafc]" style={{ color: NAVY }}>{i + 1}</span>
-                  <div><b className="block font-medium text-slate-900">{t}</b>{d}</div>
-                </li>
-              ))}
+                ["Pay the registration fee", "Pay by UPI and add the UTR number."],
+                ["We verify and confirm", "You see the result here and by email."],
+              ].map(([t, d], i) => {
+                const current = step === "pay" ? i === 1 : i === 0;
+                const done = step === "pay" && i === 0;
+                return (
+                  <li key={t} className="relative flex gap-3">
+                    <span
+                      className={`relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ring-4 ring-[#f8fafc] ${
+                        done || current ? "text-white" : "bg-[#dbe6f5]"
+                      }`}
+                      style={done || current ? { background: NAVY } : { color: NAVY }}
+                    >
+                      {done ? <Check className="h-3 w-3" /> : i + 1}
+                    </span>
+                    <div><b className="block font-medium text-slate-900">{t}</b>{d}</div>
+                  </li>
+                );
+              })}
             </ol>
           </div>
         </aside>
 
-        {/* right: form */}
+        {/* right: form or payment */}
         <main>
-          {submitted ? (
-            <div className={`rounded-2xl border border-slate-300/70 bg-[#f8fafc] p-10 ${cardShadow}`}>
-              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-full text-white" style={{ background: NAVY }}>
-                <Check className="h-5 w-5" />
-              </div>
-              <h2 className="text-2xl font-semibold" style={{ color: NAVY }}>Details received</h2>
-              <p className="mt-2 max-w-md text-slate-600">
-                Thank you. Our team will review your profile and reach out if there is a suitable opportunity.
-              </p>
-            </div>
+          {step === "pay" && file ? (
+            <PaymentStep form={f} resume={file} onBack={() => setStep("form")} />
           ) : (
             <form onSubmit={onSubmit} noValidate className="space-y-6">
               <Section index={1} total={3} title="Personal & Professional Information">
@@ -380,11 +374,11 @@ export default function Page() {
               <div className={`flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-300/70 bg-[#f8fafc] px-6 py-5 sm:px-8 ${cardShadow}`}>
                 <p className="text-[13px] text-slate-500"><span className="text-red-600">*</span> All fields are required</p>
                 <button
-                  type="submit" disabled={loading}
-                  className="inline-flex items-center gap-3 rounded-lg px-8 py-3.5 text-[15px] font-semibold text-white shadow-[0_6px_14px_-4px_rgba(20,40,79,.55)] transition hover:bg-[#2563b0] disabled:opacity-60"
+                  type="submit"
+                  className="inline-flex items-center gap-3 rounded-lg px-8 py-3.5 text-[15px] font-semibold text-white shadow-[0_6px_14px_-4px_rgba(20,40,79,.55)] transition hover:bg-[#2563b0]"
                   style={{ background: NAVY }}
                 >
-                  {loading ? "Submitting…" : "Submit details"}
+                  Continue to payment
                   <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8h10M9 4l4 4-4 4" /></svg>
                 </button>
               </div>
