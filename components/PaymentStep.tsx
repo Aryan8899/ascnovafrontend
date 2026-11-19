@@ -2,9 +2,8 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { QRCodeSVG } from "qrcode.react";
 import {
-    API_URL, REGISTRATION_FEE, UPI_ID, PAYEE_NAME, STATUS_TOKEN_KEY, upiLink,
+    API_URL, REGISTRATION_FEE, UPI_ID, PAYEE_NAME, STATUS_TOKEN_KEY, BANK, upiLink, gpayLink, phonepeLink, paytmLink,
 } from "@/lib/config";
 
 const NAVY = "#14284f";
@@ -21,6 +20,13 @@ type Props = {
     onBack: () => void;
 };
 
+const bankRows: { label: string; value: string; key: string; copyable?: boolean }[] = [
+    { label: "Bank", value: BANK.name, key: "bank" },
+    { label: "Account name", value: BANK.holder, key: "holder" },
+    { label: "Account number", value: BANK.accountNumber, key: "acc", copyable: true },
+    { label: "IFSC", value: BANK.ifsc, key: "ifsc", copyable: true },
+];
+
 export default function PaymentStep({ form, resume, onBack }: Props) {
     const router = useRouter();
     const [utr, setUtr] = useState("");
@@ -29,7 +35,7 @@ export default function PaymentStep({ form, resume, onBack }: Props) {
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [serverError, setServerError] = useState("");
     const [loading, setLoading] = useState(false);
-    const [copied, setCopied] = useState(false);
+    const [copied, setCopied] = useState("");
     const shotRef = useRef<HTMLInputElement>(null);
 
     const pickShot = (fl?: File | null) => {
@@ -45,11 +51,11 @@ export default function PaymentStep({ form, resume, onBack }: Props) {
         setErrors((p) => ({ ...p, shot: "" }));
     };
 
-    const copyUpi = async () => {
+    const copy = async (value: string, key: string) => {
         try {
-            await navigator.clipboard.writeText(UPI_ID);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1800);
+            await navigator.clipboard.writeText(value);
+            setCopied(key);
+            setTimeout(() => setCopied(""), 1800);
         } catch { /* clipboard blocked: user can copy by hand */ }
     };
 
@@ -116,9 +122,14 @@ export default function PaymentStep({ form, resume, onBack }: Props) {
                 <div className="grid gap-8 px-6 py-7 sm:px-8 md:grid-cols-[auto_1fr]">
                     <div className="mx-auto flex flex-col items-center gap-3">
                         <div className="rounded-xl border border-slate-300 bg-white p-3">
-                            <QRCodeSVG value={upiLink()} size={168} fgColor={NAVY} />
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                                src="/upi-qr.jpeg"
+                                alt={`UPI QR code for ${PAYEE_NAME}`}
+                                className="h-[200px] w-[200px] object-contain"
+                            />
                         </div>
-                        <span className="text-[13px] text-slate-500">Scan with any UPI app</span>
+                        <span className="text-[13px] text-slate-500">Scan with any UPI app and enter ₹{REGISTRATION_FEE}</span>
                     </div>
 
                     <div className="space-y-5">
@@ -128,26 +139,62 @@ export default function PaymentStep({ form, resume, onBack }: Props) {
                         </div>
 
                         <div>
-                            <div className="text-sm text-slate-500">Pay to {PAYEE_NAME}</div>
+                            <div className="text-sm text-slate-500">UPI ID ({PAYEE_NAME})</div>
                             <div className="mt-1 flex items-center gap-3">
                                 <code className="rounded-md bg-[#e4edf9] px-3 py-1.5 text-[15px] font-medium" style={{ color: NAVY }}>{UPI_ID}</code>
-                                <button type="button" onClick={copyUpi} className="text-sm font-medium hover:underline" style={{ color: BLUE }}>
-                                    {copied ? "Copied" : "Copy"}
+                                <button type="button" onClick={() => copy(UPI_ID, "upi")} className="text-sm font-medium hover:underline" style={{ color: BLUE }}>
+                                    {copied === "upi" ? "Copied" : "Copy"}
                                 </button>
                             </div>
                         </div>
 
-                        {/* mobile pe GPay / koi bhi UPI app khulega */}
-                        <a
-                            href={upiLink()}
-                            className="inline-flex items-center justify-center rounded-lg px-6 py-3 text-[15px] font-semibold text-white shadow-[0_6px_14px_-4px_rgba(20,40,79,.55)] transition hover:bg-[#2563b0] md:hidden"
-                            style={{ background: NAVY }}
-                        >
-                            Pay ₹{REGISTRATION_FEE} with GPay
-                        </a>
+                        {/* mobile pe app-wise pay buttons */}
+                        <div className="flex flex-wrap gap-2 md:hidden">
+                            {[
+                                ["GPay", gpayLink()],
+                                ["PhonePe", phonepeLink()],
+                                ["Paytm", paytmLink()],
+                                ["Other UPI app", upiLink()],
+                            ].map(([label, href]) => (
+                                <a
+                                    key={label}
+                                    href={href}
+                                    className="inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-[14px] font-semibold text-white transition hover:bg-[#2563b0]"
+                                    style={{ background: NAVY }}
+                                >
+                                    Pay ₹{REGISTRATION_FEE} · {label}
+                                </a>
+                            ))}
+                        </div>
+
+                        {/* Bank transfer details */}
+                        <div className="rounded-lg border border-slate-300 bg-white p-4">
+                            <div className="mb-2 text-sm font-medium text-slate-900">Or pay by bank transfer</div>
+                            <dl className="space-y-1.5 text-[14px]">
+                                {bankRows.map((r) => (
+                                    <div key={r.key} className="flex items-center justify-between gap-3">
+                                        <dt className="text-slate-500">{r.label}</dt>
+                                        <dd className="flex items-center gap-3 font-medium tabular-nums" style={{ color: NAVY }}>
+                                            {r.value}
+                                            {r.copyable && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => copy(r.value, r.key)}
+                                                    className="text-[13px] hover:underline"
+                                                    style={{ color: BLUE }}
+                                                >
+                                                    {copied === r.key ? "Copied" : "Copy"}
+                                                </button>
+                                            )}
+                                        </dd>
+                                    </div>
+                                ))}
+                            </dl>
+                        </div>
+
                         <p className="text-[13px] leading-relaxed text-slate-500">
-                            On a phone, the button opens your UPI app. On a computer, scan the QR code with your phone.
-                            After paying, come back here and enter the payment details below.
+                            Payments are received in the name of {PAYEE_NAME}. On a phone, the button opens your UPI app.
+                            On a computer, scan the QR code with your phone. After paying, come back here and enter the payment details below.
                         </p>
                     </div>
                 </div>
